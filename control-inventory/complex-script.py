@@ -15,6 +15,7 @@
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #    GNU General Public License for more details.
 
+import inspect
 import os
 import sys
 
@@ -84,6 +85,23 @@ def read_file(project_id, inv_file):
     return inventory
 
 
+def handle_missing_return_result(fn, member):
+    # http://stackoverflow.com/a/197053
+    vars = inspect.getargspec(fn)
+    if 'return_results' in vars[0]:
+        return fn(member, return_results=True)
+    else:
+        return fn(member)
+
+
+def get_group_vars(group, inventory):
+    return handle_missing_return_result(inventory.get_group_vars, group)
+
+
+def get_host_vars(host, inventory):
+    return handle_missing_return_result(inventory.get_host_vars, host)
+
+
 # Convert inventory structure to JSON
 def dump_json(inventory):
     ret = {}
@@ -97,14 +115,14 @@ def dump_json(inventory):
         g_obj['hosts'] = []
         for host in group.hosts:
             g_obj['hosts'].append(host.name)
-        g_obj['vars'] = group.vars
+        g_obj['vars'] = get_group_vars(group, inventory)
         ret[group.name] = g_obj
-    meta = { 'hostvars': {} }
+    meta = dict(hostvars=dict())
     for host in inventory.list_hosts():
         if host.name not in meta['hostvars']:
-            meta['hostvars'][host.name] = host.vars
+            meta['hostvars'][host.name] = get_host_vars(host, inventory)
         else:
-            meta['hostvars'][host.name].update(host.vars)
+            meta['hostvars'][host.name].update(get_host_vars(host, inventory))
     ret['_meta'] = meta
     return json.dumps(ret)
 
