@@ -19,10 +19,10 @@ import os
 import sys
 
 import json
-import urllib
 
-from ansible.inventory import Group
-from ansible.inventory.ini import InventoryParser as InventoryINIParser
+from ansible.inventory import Inventory
+from ansible.parsing.dataloader import DataLoader
+from ansible.vars import VariableManager
 from tower_cli import api
 
 
@@ -70,20 +70,24 @@ def get_file_path(project_id):
         return None
     return '%s/%s' % (BASE_PATH, result['local_path'])
 
+
 # Read and parse inventory
 def read_file(project_id, inv_file):
     file_path = get_file_path(project_id)
     if not file_path:
         return ""
-    group = Group(name='all')
-    groups = { 'all': group }
-    parser = InventoryINIParser([], groups, filename = "%s/%s" %(file_path, inv_file))
-    return groups
+    variable_manager = VariableManager()
+    loader = DataLoader()
+    inventory = Inventory(loader=loader, variable_manager=variable_manager,
+                          host_list=os.path.join(file_path, inv_file))
+    variable_manager.set_inventory(inventory)
+    return inventory
+
 
 # Convert inventory structure to JSON
 def dump_json(inventory):
     ret = {}
-    for group in inventory.values():
+    for group in inventory.groups.values():
         if group.name == 'all':
             continue
         g_obj = {}
@@ -96,8 +100,8 @@ def dump_json(inventory):
         g_obj['vars'] = group.vars
         ret[group.name] = g_obj
     meta = { 'hostvars': {} }
-    for host in inventory['all'].get_hosts():
-        if not meta['hostvars'].has_key(host.name):
+    for host in inventory.list_hosts():
+        if host.name not in meta['hostvars']:
             meta['hostvars'][host.name] = host.vars
         else:
             meta['hostvars'][host.name].update(host.vars)
